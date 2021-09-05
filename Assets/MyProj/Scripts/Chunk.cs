@@ -1,213 +1,108 @@
-﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UIElements;
 
-public class Chunk : MonoBehaviour {
+public class Chunk : MonoBehaviour
+{
+    public MeshRenderer meshRenderer;
+    public MeshFilter meshFilter;
 
-	public MeshRenderer meshRenderer;
-	public MeshFilter meshFilter;
-	public float Seed;
-	int vertexIndex = 0;
-	List<Vector3> vertices = new List<Vector3> ();
-	List<int> triangles = new List<int> ();
-	List<Vector2> uvs = new List<Vector2> ();
+    [HideInInspector] public World world;
 
-	byte[,,] voxelMap = new byte[VoxelData.ChunkWidth, VoxelData.ChunkHeight, VoxelData.ChunkWidth];
-	// private List<VoxelMapData> voxelList = new List<VoxelMapData>();
-	
-	World world;
-	private Camera _cam;
-	
-	void Start () {
-		world = GameObject.Find("World").GetComponent<World>();
-		_cam = GameObject.FindWithTag("MainCamera").GetComponent<Camera>();
-		PopulateVoxelMap ();
-		CreateMeshData ();
-		CreateMesh ();
-	}
-
-	private void Update()
-	{
-		if (Input.GetMouseButtonDown(0))
-		{
-			RaycastHit hit;
-			Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
-			
-			if (Physics.Raycast(ray, out hit))
-			{
-				Debug.Log(hit.point);
-				int x = Mathf.FloorToInt (hit.point.x);
-				int y = Mathf.FloorToInt (hit.point.y);
-				int z = Mathf.FloorToInt (hit.point.z);
-				
-				//Debug.Log(voxelMap[x,y,z]);
-			}
-		}
-	}
+    private int _vertexIndex = 0;
+    private List<Vector3> _vertices = new List<Vector3>();
+    private List<int> _triangles = new List<int>();
+    private List<Vector2> _uvs = new List<Vector2>();
+    private Mesh _mesh;
+    private Dictionary<Vector3, int> _voxelMap = new Dictionary<Vector3, int>();
+    public Dictionary<Vector3, int> voxelMap => _voxelMap;
 
 
-	void PopulateVoxelMap () {
-		for (int y = 0; y < VoxelData.ChunkHeight; y++) {
-			for (int x = 0; x < VoxelData.ChunkWidth; x++) {
-				for (int z = 0; z < VoxelData.ChunkWidth; z++) {
-					
-					int terrainHeight = Mathf.FloorToInt(16 * Get2DPerlin(new Vector2(this.transform.position.x + x,  this.transform.position.z + z),
-						Seed, 1));
+    private void Start()
+    {
+        _mesh = new Mesh();
 
-					terrainHeight = Math.Abs(terrainHeight);
-					terrainHeight += 50;
-					
-					//Debug.Log(terrainHeight);
-					
-					try
-					{
-						int caveStartingPoint = terrainHeight - 25;
-						int caveEndPoint = 40 + Mathf.FloorToInt(16 * Get2DPerlin(new Vector2(this.transform.position.x + x,  this.transform.position.z + z),
-							12, 1));
+        PopulateVoxelMap();
+        CreateMeshData();
+        CreateMesh();
 
-						
-						voxelMap[x, terrainHeight, z] = 2;
-						
-						for (int i = 0; i < VoxelData.ChunkHeight; i++)
-						{
-							if (terrainHeight != i)
-							{
-								if (i == 0)
-								{
-									//Create Bedrock add the bottom
-									voxelMap[x, i, z] = 0;
-								}
-								else
-								{
-									if(i > caveStartingPoint)
-									{
-										voxelMap[x, i, z] = 1; //Create Stone
-									}
+    }
 
-									if (i < caveEndPoint)
-									{
-										voxelMap[x, i, z] = 1; //Create Stone
+    //Step (1)
+    private void PopulateVoxelMap()
+    {
+        for (int y = 0; y < ChunkData.chunkHeight; y++)
+        {
+            for (int x = 0; x < ChunkData.chunkWidth; x++)
+            {
+                for (int z = 0; z < ChunkData.chunkWidth; z++)
+                {
+                    _voxelMap.Add(new Vector3(x, y, z), 1);
+                }
+            }
+        }
+    }
 
-									}
-									//	Debug.Log(noiseValue);
-									if (i < caveStartingPoint && i > caveEndPoint)
-									{
-										float noiseScale = .05F;
-										// float noiseValue = Perlin3D((this.transform.position.x + x),
-										// 	(this.transform.position.y + y), (this.transform.position.z + z), .05F,
-										// 	50); //get value of the noise at given x, y, and z.
-										float noiseValue = Perlin3D(this.transform.position.x + x * noiseScale, this.transform.position.y + y * noiseScale, this.transform.position.z + z * noiseScale);
-										float threshold = .5f;
-										if (noiseValue >= threshold)
-										{
-											voxelMap[x, i, z] = 4; //Create Air
-										}
-										else
-										{
-											voxelMap[x, i, z] = 1; //Create Stone
-										}
-									}
-									if (i > terrainHeight)
-									{
-										voxelMap[x, i, z] = 4; //Create Air block above the ground
-									}
-								}
-							}
-						}
-					}
-					catch (IndexOutOfRangeException e)  // CS0168
-					{
-						Debug.Log(e.Message);
-						Debug.Log("trying to get: " + x + terrainHeight + z);
-						// Set IndexOutOfRangeException to the new exception's InnerException.
-						throw new ArgumentOutOfRangeException("index parameter is out of range.", e);
-					}
-					// if (terrainHeight < 1)                                         
-                    //     voxelMap[x, terrainHeight, z] = 0;                         
-                    // else if (terrainHeight == VoxelData.ChunkHeight - 1)           
-                    //     voxelMap[x, terrainHeight, z] = 2;                         
-                    // else
-                    //     voxelMap [x, terrainHeight, z] = 1;
-    
-				}
-			}
-		}
+    //Step (2)
+    private void CreateMeshData()
+    {
+        for (int y = 0; y < ChunkData.chunkHeight; y++)
+        {
+            for (int x = 0; x < ChunkData.chunkWidth; x++)
+            {
+                for (int z = 0; z < ChunkData.chunkWidth; z++)
+                {
+                    AddVoxelDataToChunk(new Vector3(x, y, z));
+                }
+            }
+        }
+    }
 
-	}
-
-	void CreateMeshData () {
-
-		for (int y = 0; y < VoxelData.ChunkHeight; y++) {
-			for (int x = 0; x < VoxelData.ChunkWidth; x++) {
-				for (int z = 0; z < VoxelData.ChunkWidth; z++) {
-					AddVoxelDataToChunk (new Vector3(x, y, z));
-				}
-			}
-		}
-
-	}
-
-	bool CheckVoxel (Vector3 pos) {
-
-		int x = Mathf.FloorToInt (pos.x);
-		int y = Mathf.FloorToInt (pos.y);
-		int z = Mathf.FloorToInt (pos.z);
-
-		if (x < 0 || x > VoxelData.ChunkWidth - 1 || y < 0 || y > VoxelData.ChunkHeight - 1 || z < 0 || z > VoxelData.ChunkWidth - 1)
-		{
-			return false; 
-		}
-
-		return world.blocktypes[voxelMap[x, y, z]].isSolid;
-
-	}
-
-	void AddVoxelDataToChunk (Vector3 pos) {
-
-		for (int p = 0; p < 6; p++) {
-			if (!CheckVoxel(pos + VoxelData.faceChecks[p])) {
-                byte blockID = voxelMap[(int)pos.x, (int)pos.y, (int)pos.z];
+    private void AddVoxelDataToChunk(Vector3 voxelPos)
+    {
+        for (int p = 0; p < 6; p++)
+        {
+            if (!world.CheckVoxel(voxelPos + VoxelData.FaceChecks[p], this))
+            {
+                int blockID = 0;
                 
-                if (world.blocktypes[voxelMap[(int) pos.x, (int) pos.y, (int) pos.z]].isSolid)       
-                {                                                                                    
-					vertices.Add (pos + VoxelData.voxelVerts [VoxelData.voxelTris [p, 0]]);
-					vertices.Add (pos + VoxelData.voxelVerts [VoxelData.voxelTris [p, 1]]);
-					vertices.Add (pos + VoxelData.voxelVerts [VoxelData.voxelTris [p, 2]]);
-					vertices.Add (pos + VoxelData.voxelVerts [VoxelData.voxelTris [p, 3]]);
-					AddTexture(world.blocktypes[blockID].GetTextureID(p));
-					triangles.Add(vertexIndex);
-					triangles.Add(vertexIndex + 1);
-					triangles.Add(vertexIndex + 2);
-					triangles.Add(vertexIndex + 2);
-					triangles.Add(vertexIndex + 1);
-					triangles.Add(vertexIndex + 3);
+                if (_voxelMap.TryGetValue(voxelPos, out blockID))
+                {
+                    if (world.BlockTypesList[blockID].isSolid)
+                    {
+                        _vertices.Add(voxelPos + VoxelData.VoxelVerts[VoxelData.VoxelTris[p, 0]]);
+                        _vertices.Add(voxelPos + VoxelData.VoxelVerts[VoxelData.VoxelTris[p, 1]]);
+                        _vertices.Add(voxelPos + VoxelData.VoxelVerts[VoxelData.VoxelTris[p, 2]]);
+                        _vertices.Add(voxelPos + VoxelData.VoxelVerts[VoxelData.VoxelTris[p, 3]]);
+                        AddTexture(world.BlockTypesList[blockID].GetTextureID(p));
+                        _triangles.Add(_vertexIndex);
+                        _triangles.Add(_vertexIndex + 1);
+                        _triangles.Add(_vertexIndex + 2);
+                        _triangles.Add(_vertexIndex + 2);
+                        _triangles.Add(_vertexIndex + 1);
+                        _triangles.Add(_vertexIndex + 3);
+                        _vertexIndex += 4;
+                    }
+                }
+            }
+        }
 
-					vertexIndex += 4;
-				}
-			}
-		}
-	}
+        //STEP (4)
+        void CreateMesh()
+        {
+            _mesh.vertices = _vertices.ToArray();
+            _mesh.triangles = _triangles.ToArray();
+            _mesh.uv = _uvs.ToArray();
+            _mesh.RecalculateNormals();
+            meshFilter.mesh = _mesh;
+            MeshCollider myMC = GetComponent<MeshCollider>();
+            _mesh.RecalculateBounds();
+            myMC.sharedMesh = _mesh;
+        }
 
-	void CreateMesh () {
-
-		Mesh mesh = new Mesh ();
-		mesh.vertices = vertices.ToArray ();
-		mesh.triangles = triangles.ToArray ();
-		mesh.uv = uvs.ToArray ();
-		
-		mesh.RecalculateNormals ();
-		
-		
-		meshFilter.mesh = mesh;
-		
-		MeshCollider myMC = GetComponent<MeshCollider>();
-		
-		
-		mesh.RecalculateBounds();
-		myMC.sharedMesh = mesh;
-
-	}
-
+    }
+    
     void AddTexture (int textureID) {
 
         float y = textureID / VoxelData.TextureAtlasSizeInBlocks;
@@ -218,52 +113,87 @@ public class Chunk : MonoBehaviour {
 
         y = 1f - y - VoxelData.NormalizedBlockTextureSize;
 
-        uvs.Add(new Vector2(x, y));
-        uvs.Add(new Vector2(x, y + VoxelData.NormalizedBlockTextureSize));
-        uvs.Add(new Vector2(x + VoxelData.NormalizedBlockTextureSize, y));
-        uvs.Add(new Vector2(x + VoxelData.NormalizedBlockTextureSize, y + VoxelData.NormalizedBlockTextureSize));
-
-
+        _uvs.Add(new Vector2(x, y));
+        _uvs.Add(new Vector2(x, y + VoxelData.NormalizedBlockTextureSize));
+        _uvs.Add(new Vector2(x + VoxelData.NormalizedBlockTextureSize, y));
+        _uvs.Add(new Vector2(x + VoxelData.NormalizedBlockTextureSize, y + VoxelData.NormalizedBlockTextureSize));
     }
-    
-    public static float Get2DPerlin (Vector2 position, float offset, float scale) {
-	    return Mathf.PerlinNoise((position.x + 0.1f) / 16 * scale + offset, (position.y + 0.1f) / 16 * scale + offset);
+
+    private void CreateMesh()
+    {
+        _mesh.vertices = _vertices.ToArray ();
+        _mesh.triangles = _triangles.ToArray ();
+        _mesh.uv = _uvs.ToArray ();
+        _mesh.RecalculateNormals ();
+        meshFilter.mesh = _mesh;
+        MeshCollider myMC = GetComponent<MeshCollider>();
+        _mesh.RecalculateBounds();
+        myMC.sharedMesh = _mesh; 
     }
-    //
-    // public static float Perlin3D(float x, float y, float z, float scale, float offset) {
-	   //  // float ab = Mathf.PerlinNoise(x, y);
-	   //  // float bc = Mathf.PerlinNoise(y, z);
-	   //  // float ac = Mathf.PerlinNoise(x, z);
-	   //  //
-	   //  // float ba = Mathf.PerlinNoise(y, x);
-	   //  // float cb = Mathf.PerlinNoise(z, y);
-	   //  // float ca = Mathf.PerlinNoise(z, x);
-	   //  //
-	   //  // float abc = ab + bc + ac + ba + cb + ca;
-	   //  // return abc / 6f;
-	   //  float AB = Mathf.PerlinNoise((x + 0.1f) / 16 * scale + offset, (y + 0.1f) / 16 * scale + offset);
-	   //  float BC = Mathf.PerlinNoise((y + 0.1f) / 16 * scale + offset, (z + 0.1f) / 16 * scale + offset);
-	   //  float AC = Mathf.PerlinNoise((x + 0.1f) / 16 * scale + offset, (z + 0.1f) / 16 * scale + offset);
-    //     
-	   //  float BA = Mathf.PerlinNoise((y + 0.1f) / 16 * scale + offset, (x + 0.1f) / 16 * scale + offset);
-	   //  float CB = Mathf.PerlinNoise((z + 0.1f) / 16 * scale + offset, (y + 0.1f) / 16 * scale + offset);
-	   //  float CA = Mathf.PerlinNoise((z + 0.1f) / 16 * scale + offset, (x + 0.1f) / 16 * scale + offset);
-    //
-	   //  float ABC = AB + BC + AC + BA + CB + CA;
-    //
-	   //  return ABC / 6F;
-    // }
 
-    public static float Perlin3D(float x, float y, float z) {
-	    float ab = Mathf.PerlinNoise(x, y);
-	    float bc = Mathf.PerlinNoise(y, z);
-	    float ac = Mathf.PerlinNoise(x, z);
-
-	    float ba = Mathf.PerlinNoise(y, x);
-	    float cb = Mathf.PerlinNoise(z, y);
-	    float ca = Mathf.PerlinNoise(z, x);
-
-	    float abc = ab + bc + ac + ba + cb + ca;
-	    return abc / 6f;
-    }
 }
+
+public class VoxelData
+{
+    public static readonly int TextureAtlasSizeInBlocks = 4;
+
+    public static float NormalizedBlockTextureSize
+    {
+
+        get { return 1f / (float) TextureAtlasSizeInBlocks; }
+
+    }
+
+    public static readonly Vector3[] VoxelVerts = new Vector3[8]
+    {
+
+        new Vector3(0.0f, 0.0f, 0.0f),
+        new Vector3(1.0f, 0.0f, 0.0f),
+        new Vector3(1.0f, 1.0f, 0.0f),
+        new Vector3(0.0f, 1.0f, 0.0f),
+        new Vector3(0.0f, 0.0f, 1.0f),
+        new Vector3(1.0f, 0.0f, 1.0f),
+        new Vector3(1.0f, 1.0f, 1.0f),
+        new Vector3(0.0f, 1.0f, 1.0f),
+
+    };
+
+    public static readonly Vector3[] FaceChecks = new Vector3[6]
+    {
+
+        new Vector3(0.0f, 0.0f, -1.0f),
+        new Vector3(0.0f, 0.0f, 1.0f),
+        new Vector3(0.0f, 1.0f, 0.0f),
+        new Vector3(0.0f, -1.0f, 0.0f),
+        new Vector3(-1.0f, 0.0f, 0.0f),
+        new Vector3(1.0f, 0.0f, 0.0f)
+
+    };
+
+    public static readonly int[,] VoxelTris = new int[6, 4]
+    {
+
+        // Back, Front, Top, Bottom, Left, Right
+
+        // 0 1 2 2 1 3
+        {0, 3, 1, 2}, // Back Face
+        {5, 6, 4, 7}, // Front Face
+        {3, 7, 2, 6}, // Top Face
+        {1, 5, 0, 4}, // Bottom Face
+        {4, 7, 0, 3}, // Left Face
+        {1, 2, 5, 6} // Right Face
+
+    };
+
+    public static readonly Vector2[] VoxelUvs = new Vector2[4]
+    {
+
+        new Vector2(0.0f, 0.0f),
+        new Vector2(0.0f, 1.0f),
+        new Vector2(1.0f, 0.0f),
+        new Vector2(1.0f, 1.0f)
+
+    };
+}
+
+
