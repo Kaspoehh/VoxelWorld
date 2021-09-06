@@ -38,7 +38,15 @@ public class Chunk : MonoBehaviour
             {
                 for (int z = 0; z < ChunkData.chunkWidth; z++)
                 {
-                    _voxelMap.Add(new Vector3(x, y, z), 1);
+                    int blockID = 0;
+                    if (y == 0)
+                        blockID = 1;
+                    else if (y < 60)
+                        blockID = 2;
+                    else if (y < 61)
+                        blockID = 3;
+                        
+                    _voxelMap.Add(new Vector3(x,y,z), blockID);
                 }
             }
         }
@@ -130,7 +138,7 @@ public class Chunk : MonoBehaviour
         _mesh.RecalculateBounds();
         myMC.sharedMesh = _mesh; 
     }
-
+    
 }
 
 public class VoxelData
